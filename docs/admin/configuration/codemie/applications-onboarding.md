@@ -260,9 +260,9 @@ Partial excerpt: `arguments` nests under `settings:`, alongside the fields from 
 
 `GET /v1/applications` requires no authentication, so **everything in `arguments` is world-readable**. Endpoints and IdP configuration only, never tokens, keys, or secrets. Values must be strings.
 
-**Your application authenticates itself**, against the shared enterprise IdP (Keycloak). The host passes no identity, token, or session: the user already has an SSO session in the browser, so your app's own login typically completes silently, either via an `iframe`-embedded redirect or, for a `module`, a client-side flow bootstrapped from a `keycloakConfigPath` passed through `arguments`.
+**Your application authenticates itself.** CodeMie passes it no identity, token, or session — whatever login flow your app uses, and against whatever identity provider, is entirely your own integration to build and operate. Nothing here assumes or sets one up for you.
 
-**Test the logged-out path, not just the happy path.** Silent SSO inside a cross-origin frame depends on third-party cookie behaviour and on your IdP allowing its login page to be framed at all; many block it.
+**Test the logged-out path, not just the happy path.** If your login flow depends on IdP-based silent auth inside a cross-origin frame, that depends on third-party cookie behaviour and on your IdP allowing its login page to be framed at all; many block it.
 
 **Authorisation is entirely yours.** Every CodeMie user who can see the Applications page sees every enabled card; there is no per-project, per-role, or per-user visibility filter today. If your app must be restricted, enforce it inside your app.
 
