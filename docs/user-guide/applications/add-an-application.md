@@ -86,6 +86,8 @@ Whichever option you picked, registration starts as a YAML entry like this one:
     created_by: 'Your Team'
 ```
 
+_AICE and MF Lens both register this way, as `type: 'iframe'`._
+
 A few things worth knowing before you write this file, because they're easy to get wrong and the failure mode is not gentle:
 
 **A malformed entry doesn't just fail quietly, and the damage isn't limited to your own tile.** A structurally broken entry (a missing field like `enabled`) stops the CodeMie backend from starting at all. An entry that's missing `url`, `name`, or `type` instead breaks the applications list at runtime: the page shows "No applications found," and the Applications entry disappears from the left nav, for every user on that deployment, not just yours. `url` and `name` are required but their contents aren't checked; `type` is checked against `link`, `iframe`, or `module`. Any other field name you typo is accepted and silently ignored. Test before you submit.

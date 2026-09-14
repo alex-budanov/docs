@@ -164,6 +164,8 @@ AICE takes a different path entirely: J3 (co-deployment, for data residency) usi
     created_by: 'Your Team'
 ```
 
+_AICE registers with this same shape: `type: 'iframe'`, `entry` pointing at its own deployment._
+
 > **The field is `url` in YAML and `entry` in the API.** The backend renames it. Writing `entry:` in YAML does **not** fail loudly: the unknown key is silently accepted while `url` stays `None`, and the required `entry` then fails validation while building the response. That returns **500 from `/v1/applications`, which blanks the Applications page and hides the sidebar item for every user**, not just yours. Several other omissions in the same block fail exactly the same way, and a missing `enabled` stops the backend from starting at all.
 
 **Full field mapping**, for whoever writes the `curl` in §6:
