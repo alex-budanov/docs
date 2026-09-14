@@ -8,11 +8,11 @@ pagination_prev: admin/configuration/index
 pagination_next: null
 ---
 
-# Adding an application to CodeMie
+# Application Onboarding Guide
 
-**Audience:** any team that wants their product to appear as a tile inside CodeMie, on EPAM's instance or an on-premises client's own deployment. **Read time:** fifteen to twenty minutes, after which you know your journey, your obligations, and who signs off.
+**Audience:** any team that wants their product to appear as a tile inside CodeMie, on EPAM's instance or an on-premises client's own deployment.
 
-**Status:** developer-facing guideline, self-contained: everything you need is in this file, no other document required.
+**Status:** developer-facing guideline.
 
 **Terms:** "You" is your team, the one building the integration. CodeMie is the platform.
 
@@ -31,16 +31,18 @@ An **application** is a tile in the left navigation that opens your product's UI
 
 Only the last row continues here. If one of the other rows also applies, build that first: days of work, ships independently, no platform team needed.
 
-CodeMie's Applications page is a **launcher, not a hosting platform**. CodeMie does not build, deploy, run, or scale your app. You deploy and operate it yourself; CodeMie stores a pointer to it and renders a card that opens it. There is no self-service UI, no registration API, and no database record for this today; registration is a pull request, and a config change requires a backend restart (the YAML is parsed once at process start and cached in a singleton).
+CodeMie's Applications page is a **launcher, not a hosting platform**. CodeMie does not build, deploy, run, or scale your app. You deploy and operate it yourself; CodeMie stores a pointer to it and renders a card that opens it.
+
+> **If your app needs LLM access, you don't have to provision your own.** MF Lens authenticates its backend against CodeMie's own LiteLLM proxy (an API key from the proxy's admin UI) instead of managing separate model access. Ask your operator whether LiteLLM Proxy is available on your deployment before you set up something separate — not sure who that is? Use the [Help Center](../../../user-guide/getting-started/help-center.md).
+
+There is no self-service UI, no registration API, and no database record for this today; registration is a pull request, and a config change requires a backend restart (the YAML is parsed once at process start and cached in a singleton). A narrow `PUT /v1/config/declarations/{id}` API does exist, but it's a fixed allow-list of three unrelated settings (chat disclaimer, release-notes count, web search); applications aren't on it, and calling it for an application `id` returns 404.
 
 **Which deployment does this apply to, and which file actually wins?** CodeMie's registration mechanism is a YAML file, but two different things can supply it, and they don't always agree.
 
 - **`config/customer/customer-config.yaml` in the repository.** Baked into the image at build time. Governs only when no ConfigMap is mounted.
 - **The `codemie-customer-config` ConfigMap.** Mounted over the same path by the Helm chart on many deployments. Wins wherever it is mounted; a pull request to the repository file then has no effect at all.
 
-Which one governs has already been inconsistent across cloud providers in practice: the volume definition was invalid on GCP, and on Azure the volume was not mounted by default.
-
-**Before you submit anything, confirm with whoever operates your target deployment which mechanism is actually live there.** This guide's steps work the same either way, but only one will take effect.
+**Before you submit anything, confirm with whoever operates your target deployment which mechanism is actually live there.** Not sure who that is? Ask via the [Help Center](../../../user-guide/getting-started/help-center.md). This guide's steps work the same either way, but only one will take effect.
 
 ---
 
@@ -80,7 +82,7 @@ flowchart TD
 **Typical examples.**
 
 - **J1:** an internal wiki or support desk you already run elsewhere.
-- **J2:** a build-status panel, as `technology-copilot` does today.
+- **J2:** a panel that needs to feel native without running in the operator's cluster, e.g. a build-status widget.
 - **J3:** a vendor product that needs data residency, as AICE does today.
 
 All three follow the same path through the rest of this guide. Only the gate content and sign-off differ.
@@ -104,8 +106,8 @@ All three follow the same path through the rest of this guide. Only the gate con
 **Typical examples.**
 
 - **`link`:** an external tool with its own UI, e.g. a wiki, that doesn't need to feel native.
-- **`iframe`:** a product with its own frontend that should look embedded without deep integration work.
-- **`module`:** a panel that needs to share layout and navigation state with CodeMie itself, e.g. a build-status panel.
+- **`iframe`:** a product with its own frontend that should look embedded without deep integration work, e.g. AICE or MF Lens.
+- **`module`:** a panel that needs to share layout and navigation state with CodeMie itself.
 
 Choose the **lightest type that meets the need**. `module` is not a better `iframe`; it is a far larger commitment for both sides. Take it only when the surface must feel native:
 
@@ -119,7 +121,7 @@ Choose the **lightest type that meets the need**. `module` is not a better `ifra
 
 A preview of the whole path, using the build-status panel from the typical examples above; every other journey and type follows the same shape, with different gates.
 
-1. **Journey.** It can run outside the operator's environment (D1), and it should feel like part of the CodeMie UI (D2). That's J2, the same journey `technology-copilot` is in today.
+1. **Journey.** It can run outside the operator's environment (D1), and it should feel like part of the CodeMie UI (D2). That's J2.
 2. **Type.** `module`. An `iframe` would mean a scrollbar inside a scrollbar; a `link` would leave CodeMie entirely, and this panel needs to feel native.
 3. **What you provide**, per §4's `module` contract:
    ```yaml
@@ -142,7 +144,7 @@ A preview of the whole path, using the build-status panel from the typical examp
 
 That's the whole path. §1 through §7 cover every other journey and type combination.
 
-AICE follows the same path but lands in J3 instead: unlike a build-status panel, it has to run inside the operator's environment.
+AICE takes a different path entirely: J3 (co-deployment, for data residency) using `iframe`, not `module` — proof that the two axes are independent, exactly as §2 describes.
 
 ---
 
@@ -164,9 +166,22 @@ AICE follows the same path but lands in J3 instead: unlike a build-status panel,
 
 > **The field is `url` in YAML and `entry` in the API.** The backend renames it. Writing `entry:` in YAML does **not** fail loudly: the unknown key is silently accepted while `url` stays `None`, and the required `entry` then fails validation while building the response. That returns **500 from `/v1/applications`, which blanks the Applications page and hides the sidebar item for every user**, not just yours. Several other omissions in the same block fail exactly the same way, and a missing `enabled` stops the backend from starting at all.
 
-`url` must be a **stable, network-reachable URL from the user's browser**, not from the CodeMie backend, which only echoes the string; all fetching is client-side. It must be **HTTPS** on any real deployment (`http://localhost:*` is exempt, and is how local dev works), and should be **version-pinned**: a mutable URL means the code can change after it was reviewed. There is **no integrity check on the loaded content** — no SRI pinning today — so a changed URL is trusted verbatim.
+**Full field mapping**, for whoever writes the `curl` in §6:
 
-A **slug** (lowercase, hyphenated, unique) becomes both the URL path and, for `module`, the Module Federation remote name (the standard your bundler uses to load one app's JS into another's).
+| YAML                                                           | `GET /v1/applications` field | Note                                                                                   |
+| -------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------- |
+| `id: applications:your-slug`                                   | `slug: "your-slug"`          | the `applications:` prefix is stripped                                                 |
+| `settings.url`                                                 | `entry`                      | renamed, see the callout above                                                         |
+| `settings.enabled`                                             | —                            | `false` filters the entry out before the API sees it                                   |
+| `settings.availableForExternal`                                | —                            | accepted, but has no effect on this endpoint (see [§7](#7-known-gaps-in-the-platform)) |
+| `settings.description`                                         | `description`                | `null` becomes `""`                                                                    |
+| `settings.name`, `type`, `icon_url`, `created_by`, `arguments` | same                         | `arguments` is `null` when you don't set one                                           |
+
+`url` must be a **stable, network-reachable URL from the user's browser**, not from the CodeMie backend, which only echoes the string; all fetching is client-side. It should be **HTTPS** on any real deployment, and must be **version-pinned**: a mutable URL means the code can change after it was reviewed. In practice that means a content-hashed filename (`app.a1b2c3.js`) or a version segment in the path (`/v1.4.2/app.js`) — the host calls `entry` verbatim and browsers cache aggressively, so a URL that never changes bytes is the only thing that reliably busts old copies. There is **no integrity check on the loaded content** — no SRI pinning today — so a changed URL is trusted verbatim.
+
+A **slug** (lowercase, hyphenated, unique, not literally `iframe`) becomes both the URL path and, for `module`, the Module Federation remote name (the standard your bundler uses to load one app's JS into another's). The URL path depends on your type: `/applications/iframe/<slug>` for `iframe`, `/applications/<slug>` for `module`; `link` has no route of its own, it just calls `window.open(entry, '_blank')`.
+
+**How the tile actually renders.** `icon_url` is cropped to a 72×72 circle — wide or non-square logos get cut. If you omit it, the tile falls back to a two-letter monogram of `name`, not a blank icon. `description` is clamped to two lines on the card itself, but the full text appears in a tooltip on hover, up to 1000 characters.
 
 ### `link` also needs
 
@@ -179,6 +194,8 @@ Three requirements, not recommendations. Today, nothing on the platform side enf
 1. **Permit framing by CodeMie's origin.** `Content-Security-Policy: frame-ancestors https://<codemie-host>`, and **not** `X-Frame-Options: DENY` or `SAMEORIGIN`, which override it.
 2. **Make session cookies work in a third-party context.** `SameSite=None; Secure`, or move to token-based auth entirely. This applies even in the same cluster: same cluster is not same origin.
 3. **Handle the logged-out path explicitly.** If your IdP refuses to be framed, the default is a blank rectangle. Detect it and render an "open in a new tab" link instead.
+
+**No `allow` attribute is set on the frame today**, so clipboard-write, fullscreen, camera, and downloads are all unavailable to your framed app without a platform-side change — don't design a feature around needing them. The frame's `title` is also hardcoded to the same string for every registered app, not yours — a known accessibility gap, not something you can fix on your end.
 
 On the iframe route, CodeMie reads a `path` query parameter from its own URL and appends that value to your `entry` verbatim, with no separator inserted, so the value must carry its own leading `/` or `?`.
 
@@ -202,6 +219,8 @@ The full contract:
 
 That is the whole contract. Everything else is your application's business.
 
+**Your module owns its own chrome.** The module route is a bare container div — no page layout, no title, no back button, unlike the iframe route which wraps your app in CodeMie's own layout. Build whatever "back" affordance you need yourself. Slugs are also deep-link-fragile: anything after an `&` is silently truncated, so avoid it in your slug.
+
 > **The `exposes` key must not have a leading `./`.** The host asks for `CodemieEntryComponent`, and `@originjs/vite-plugin-federation` (verified at 1.4.1, the pinned version) does a literal `moduleMap[componentName]` lookup with no normalization between the two forms. A `./`-prefixed key therefore throws `Can not find remote module CodemieEntryComponent`. Conventional Module Federation examples use the `./` form, which is exactly why this catches people. If you are on different federation tooling, do not assume it normalizes either; confirm before you ship.
 
 <!-- -->
@@ -218,6 +237,8 @@ That is the whole contract. Everything else is your application's business.
 6. `unwrapDefault(module)`: takes `.default` if it is an ES module.
 7. `component.mount(shadowRootChild, arguments)`: you implement this; returns `{ unmount }`.
 8. On navigation away, `returned.unmount()`: you implement this.
+
+> **`mount()` is async, and the host does not wait for it before letting the user navigate away.** The returned `{ unmount }` only exists once your `mount()` promise resolves. If the user leaves first, teardown runs before that reference exists, so `unmount()` is never called; `mount()` then finishes into a shadow root that's already gone. Have `mount()` check whether its target is still attached before doing meaningful work, and keep it as close to synchronous as you can.
 
 You do **not** need to modify the host's `vite.config.ts`: remotes are registered at runtime via `setRemote`, which accepts any slug.
 
@@ -237,7 +258,7 @@ Partial excerpt: `arguments` nests under `settings:`, alongside the fields from 
 
 `GET /v1/applications` requires no authentication, so **everything in `arguments` is world-readable**. Endpoints and IdP configuration only, never tokens, keys, or secrets. Values must be strings.
 
-**Your application authenticates itself**, against the shared enterprise IdP (Keycloak). The host passes no identity, token, or session: the user already has an SSO session in the browser, so your app's own login typically completes silently, either via an `iframe`-embedded redirect or, for a `module`, a client-side flow bootstrapped from a `keycloakConfigPath` passed through `arguments`. This is the pattern `technology-copilot` already uses.
+**Your application authenticates itself**, against the shared enterprise IdP (Keycloak). The host passes no identity, token, or session: the user already has an SSO session in the browser, so your app's own login typically completes silently, either via an `iframe`-embedded redirect or, for a `module`, a client-side flow bootstrapped from a `keycloakConfigPath` passed through `arguments`.
 
 **Test the logged-out path, not just the happy path.** Silent SSO inside a cross-origin frame depends on third-party cookie behaviour and on your IdP allowing its login page to be framed at all; many block it.
 
@@ -272,8 +293,6 @@ _E.g. AICE._
 
 ### 🔴 `module`
 
-_E.g. `technology-copilot`._
-
 - [ ] Builds ESM and exposes `CodemieEntryComponent`, with no leading `./`
 - [ ] `mount(el, args)` returns `{ unmount() }`, and `unmount` releases **everything**
 - [ ] No `shared` modules declared; the framework runtime is bundled
@@ -297,6 +316,8 @@ _E.g. AICE again: it also runs inside the operator's own cluster, on top of its 
 
 ## 6. Local testing
 
+Platform-side test coverage for this feature is thin — one backend happy-path test, none on the frontend for any of the three route types — so the steps below are not a formality; they're the only real check anything gets before it reaches users.
+
 1. Run a local CodeMie backend with your entry added to `config/customer/customer-config.yaml`, pointing `url` at your dev server. A faster, query-parameter-based dev-override (no YAML edit, no backend restart) is planned but not yet shipped on any deployment; check with the CodeMie team on its status before assuming it's available.
 2. If editing YAML directly: restart the backend, then confirm `GET /v1/applications` lists your app with the fields you expect. No auth required, so `curl` works.
 3. Open `/applications` in the UI and launch your card.
@@ -309,21 +330,46 @@ _E.g. AICE again: it also runs inside the operator's own cluster, on top of its 
 
 Not developer to-dos: platform limitations to plan around, and candidates to raise with the CodeMie team.
 
-| Gap                                   | Impact                                                                                                                                                                                               |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No visibility control                 | Every enabled app is shown to every user; there is no per-project or per-role filter.                                                                                                                |
-| No identity propagation               | Every integration re-authenticates the user independently; the platform defines no token or context handshake.                                                                                       |
-| No versioning or rollback             | `entry` points at a live URL; you ship breakage to all users the moment you deploy.                                                                                                                  |
-| No health checks                      | A dead app keeps its card until someone edits YAML and redeploys.                                                                                                                                    |
-| Restart required                      | No hot reload of the config file.                                                                                                                                                                    |
-| One bad entry breaks the page         | See the callout in [§4](#4-what-you-provide). Highest priority; not yet shipped.                                                                                                                     |
-| No published CSP for framed apps      | The exact `frame-ancestors` value to allow must be confirmed per environment.                                                                                                                        |
-| No `sandbox` on the `iframe`          | Full browser privileges (popups, downloads, fullscreen, top-navigation) instead of what `sandbox` would restrict. Not deliberate; a planned fix.                                                     |
-| No SRI / integrity pinning on `entry` | A changed URL is trusted verbatim; version-pinning is the only practical mitigation today.                                                                                                           |
-| Style bridge has known edges          | See the callout in [§4](#4-what-you-provide).                                                                                                                                                        |
-| A type mismatch still renders         | An app registered as one type but opened at another type's route renders anyway, after an error toast, rather than being blocked outright.                                                           |
-| No `noopener` on `link` dispatch      | A `link` opens via `window.open(entry, '_blank')` with no `noopener`, so the opened page can navigate the CodeMie tab back to a URL of its choosing (reverse tabnabbing). Ticketed, not yet shipped. |
-| `?path=` is not origin-checked        | The value is concatenated onto `entry` unvalidated, so a crafted CodeMie URL can point the frame at another origin. Ticketed with the item above.                                                    |
+| Gap                                                | Impact                                                                                                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No visibility control                              | Every enabled app is shown to every user; there is no per-project or per-role filter. `availableForExternal` is accepted on the settings block and does gate other component types, but `/v1/applications` never reads it — setting it to `false` does nothing for a tile, and external users see it anyway. |
+| No identity propagation                            | Every integration re-authenticates the user independently; the platform defines no token or context handshake.                                                                                                                                                                                               |
+| No versioning or rollback                          | `entry` points at a live URL; you ship breakage to all users the moment you deploy.                                                                                                                                                                                                                          |
+| No health checks                                   | A dead app keeps its card until someone edits YAML and redeploys.                                                                                                                                                                                                                                            |
+| Restart required                                   | No hot reload of the config file.                                                                                                                                                                                                                                                                            |
+| Rolling restarts disagree                          | The YAML is parsed once per process at import; during a rolling restart, replicas briefly serve different config, so users can see inconsistent applications lists across requests.                                                                                                                          |
+| No removal path                                    | `enabled: false` only hides a tile; there is no deregistration flow or ownership-transfer step.                                                                                                                                                                                                              |
+| One bad entry breaks the page                      | See the callout in [§4](#4-what-you-provide). Highest priority; not yet shipped.                                                                                                                                                                                                                             |
+| No published CSP for framed apps                   | The exact `frame-ancestors` value to allow must be confirmed per environment.                                                                                                                                                                                                                                |
+| No `sandbox` on the `iframe`                       | Full browser privileges (popups, downloads, fullscreen, top-navigation) instead of what `sandbox` would restrict. Not deliberate; a planned fix.                                                                                                                                                             |
+| No SRI / integrity pinning on `entry`              | A changed URL is trusted verbatim; version-pinning is the only practical mitigation today.                                                                                                                                                                                                                   |
+| Style bridge has known edges                       | See the callout in [§4](#4-what-you-provide).                                                                                                                                                                                                                                                                |
+| A type mismatch still renders, on the iframe route | An app registered as `module` but opened at the `iframe` route renders anyway, after an error toast, rather than being blocked outright. A mismatch on the `module` route does not render at all.                                                                                                            |
+| No `noopener` on `link` dispatch                   | A `link` opens via `window.open(entry, '_blank')` with no `noopener`, so the opened page can navigate the CodeMie tab back to a URL of its choosing (reverse tabnabbing). Ticketed, not yet shipped.                                                                                                         |
+| `?path=` is not origin-checked                     | The value is concatenated onto `entry` unvalidated, so a crafted CodeMie URL can point the frame at another origin. Ticketed with the item above.                                                                                                                                                            |
+| No duplicate-id check                              | Two entries can share the same `id`/slug; nothing rejects it. Result: two tiles with the same slug and a duplicate React key on the frontend.                                                                                                                                                                |
+
+---
+
+## 8. What your Application can reach
+
+Beyond opening your own UI, a registered Application can also reach several of CodeMie's own capabilities — some directly from a `module`'s own frontend code, others only from your own backend.
+
+### `module` vs. `iframe`/`link`
+
+**`module` code executes inside CodeMie's own page, not a separate origin.** CodeMie authenticates its browser session with a cookie, and any same-origin request, including one made by your module's own code, carries that cookie automatically. `iframe` and `link` are genuinely cross-origin: the same cookie is not sent. For these two types, reach the same capabilities from your own backend instead, authenticated the same way as the assistants/workflows API in [Working with the CodeMie API](../../../user-guide/api/index.md).
+
+### Capabilities and routes
+
+| Capability                 | Route                                                                 | Auth                              |
+| -------------------------- | --------------------------------------------------------------------- | --------------------------------- |
+| Invoke any registered tool | `POST /v1/tools/{tool_name}/invoke`                                   | same as every other endpoint here |
+| Get a tool's input schema  | `GET /v1/tools/{tool_name}/schema`                                    | same                              |
+| Apply a guardrail to text  | `POST /v1/guardrails/{guardrail_id}/apply?mode=filtered&source=input` | same                              |
+| Import a skill             | `POST /v1/skills/import`                                              | same                              |
+| Export a skill             | `GET /v1/skills/{skill_id}/export`                                    | same                              |
+| A2A agent-card discovery   | `GET /v1/a2a/assistants/{id}/.well-known/agent.json`                  | none, public                      |
+| A2A execute                | `POST /v1/a2a/assistants/{id}`                                        | same                              |
 
 ---
 

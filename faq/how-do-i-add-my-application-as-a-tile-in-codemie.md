@@ -6,5 +6,6 @@ Three integration types are available: `link` (opens in a new tab), `iframe` (th
 
 ## Sources
 
+- [Bringing an Application to CodeMie](https://docs.codemie.ai/user-guide/applications/add-an-application/)
 - [Application Onboarding Guide](https://docs.codemie.ai/admin/configuration/codemie/applications-onboarding/)
 - [Customer Feature Configuration](https://docs.codemie.ai/admin/configuration/codemie/customer-feature-configuration/)
